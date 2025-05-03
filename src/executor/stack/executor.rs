@@ -622,6 +622,12 @@ impl<'config, 'precompiles, S: StackState<'config>, P: PrecompileSet>
 			gas_limit,
 		});
 
+		// The nonce must be incremented before any gas record,
+		// otherwise we might OOG without incrementing the nonce!
+		if let Err(e) = self.state.inc_nonce(caller) {
+			return (e.into(), Vec::new());
+		}
+
 		let transaction_cost = gasometer::call_transaction_cost(&data, &access_list);
 		let gasometer = &mut self.state.metadata_mut().gasometer;
 		match gasometer.record_transaction(transaction_cost) {
@@ -645,9 +651,6 @@ impl<'config, 'precompiles, S: StackState<'config>, P: PrecompileSet>
 			self.initialize_with_access_list(access_list);
 		}
 		if let Err(e) = self.record_external_operation(crate::ExternalOperation::AccountBasicRead) {
-			return (e.into(), Vec::new());
-		}
-		if let Err(e) = self.state.inc_nonce(caller) {
 			return (e.into(), Vec::new());
 		}
 
@@ -1582,11 +1585,6 @@ impl<'config, S: StackState<'config>, P: PrecompileSet> PrecompileHandle
 		self.context
 	}
 
-	/// Retreive the address of the EOA that originated the transaction.
-	fn origin(&self) -> H160 {
-		self.executor.state.origin()
-	}
-
 	/// Is the precompile call is done statically.
 	fn is_static(&self) -> bool {
 		self.is_static
@@ -1595,10 +1593,5 @@ impl<'config, S: StackState<'config>, P: PrecompileSet> PrecompileHandle
 	/// Retreive the gas limit of this call.
 	fn gas_limit(&self) -> Option<u64> {
 		self.gas_limit
-	}
-
-	/// Check if a given address is a contract being constructed
-	fn is_contract_being_constructed(&self, address: H160) -> bool {
-		self.executor.state.created(address)
 	}
 }
